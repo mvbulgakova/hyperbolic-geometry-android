@@ -33,6 +33,37 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           echo "android.suppressUnsupportedCompileSdk=34" >> gradle.properties
+
+      - name: Create missing resource files
+        run: |
+          mkdir -p app/src/main/res/xml
+          cat > app/src/main/res/xml/data_extraction_rules.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <data-extraction-rules>
+              <cloud-backup>
+                  <include domain="sharedpref" path="."/>
+              </cloud-backup>
+          </data-extraction-rules>
+          EOF
+
+          cat > app/src/main/res/xml/backup_rules.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <full-backup-content>
+          </full-backup-content>
+          EOF
+
+          for dpi in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p app/src/main/res/mipmap-$dpi
+            convert -size 48x48 xc:#6200EE app/src/main/res/mipmap-$dpi/ic_launcher.png 2>/dev/null || \
+            python3 -c "
+          import struct, zlib
+          def png(w,h,color):
+              def chunk(t,d): c=zlib.crc32(t+d)&0xffffffff; return struct.pack('>I',len(d))+t+d+struct.pack('>I',c)
+              raw=b''.join(b'\x00'+bytes(color)*w for _ in range(h))
+              return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b'')
+          open('app/src/main/res/mipmap-$dpi/ic_launcher.png','wb').write(png(48,48,[98,0,238]))
+          "
+          done
       - name: Build APK
         run: |
           chmod +x gradlew
