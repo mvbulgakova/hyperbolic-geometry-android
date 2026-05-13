@@ -25,13 +25,16 @@ jobs:
       - name: Generate Gradle Wrapper
         run: gradle wrapper
 
+      - name: Set up local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace 2>&1 | tail -100
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk          path: app/build/outputs/apk/debug/app-debug.apk
