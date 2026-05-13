@@ -31,7 +31,7 @@ jobs:
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --quiet 2>&1
 
       - name: Find APK
         run: find . -name "*.apk"
