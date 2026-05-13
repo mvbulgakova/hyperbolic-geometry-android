@@ -1,39 +1,31 @@
 name: Build APK
-
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-
       - name: Install Gradle 8.7
         run: |
           wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O gradle.zip
           unzip -q gradle.zip -d $HOME/gradle
           echo "$HOME/gradle/gradle-8.7/bin" >> $GITHUB_PATH
-
       - name: Generate Gradle Wrapper
         run: gradle wrapper
-
       - name: Set up local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-
       - name: Fix gradle.properties
         run: |
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           echo "android.suppressUnsupportedCompileSdk=34" >> gradle.properties
-
       - name: Create missing resource files
         run: |
           mkdir -p app/src/main/res/xml
@@ -45,13 +37,11 @@ jobs:
               </cloud-backup>
           </data-extraction-rules>
           EOF
-
           cat > app/src/main/res/xml/backup_rules.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <full-backup-content>
           </full-backup-content>
           EOF
-
           for dpi in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p app/src/main/res/mipmap-$dpi
             python3 -c "
@@ -64,17 +54,12 @@ jobs:
           open('app/src/main/res/mipmap-$dpi/ic_launcher_round.png','wb').write(png(48,48,[98,0,238]))
           "
           done
-
       - name: Patch source code
         run: |
           BASE="app/src/main/java/com/hyperbolic/geometry"
-
           sed -i "s/'%.2f'/\"%.2f\"/g" "$BASE/ui/screens/SphereScreen.kt"
-
           sed -i 's/ACTION_POINTER_MOVE/ACTION_MOVE/g' "$BASE/rendering/GLSurfaceViewWrapper.kt"
-
           sed -i '1s/^/import androidx.compose.foundation.verticalScroll\nimport androidx.compose.foundation.rememberScrollState\n/' "$BASE/ui/screens/BundleScreen.kt"
-
           cat > "$BASE/rendering/GLStubs.kt" << 'EOF'
           package com.hyperbolic.geometry.rendering
           internal const val GL_AMBIENT_DIFFUSE = 0x1602
@@ -82,7 +67,6 @@ jobs:
           internal fun glEnd() {}
           internal fun glVertex3f(x: Float, y: Float, z: Float) {}
           EOF
-
           THEME_FN=$(grep -oP 'fun \K\w+Theme' "$BASE/ui/theme/Theme.kt" | head -1)
           [ -z "$THEME_FN" ] && THEME_FN="HyperbolicGeometryTheme"
           cat > "$BASE/ui/theme/Theme.kt" << ENDOFFILE
@@ -99,73 +83,21 @@ jobs:
               MaterialTheme(colorScheme = if (darkTheme) Dark else Light, content = content)
           }
           ENDOFFILE
-
           sed -i '/kotlinOptions/a\            freeCompilerArgs += ["-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"]' app/build.gradle
-
       - name: Build APK
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug > build.log 2>&1 || true
-
       - name: Show error if failed
         run: |
           head -80 build.log
           echo "==="
           grep -n "error:\|Error:\|Could not\|Unresolved\|Exception\|FAILED" build.log | head -30
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log      - name: Create missing resource files
-        run: |
-          mkdir -p app/src/main/res/xml
-          cat > app/src/main/res/xml/data_extraction_rules.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <data-extraction-rules>
-              <cloud-backup>
-                  <include domain="sharedpref" path="."/>
-              </cloud-backup>
-          </data-extraction-rules>
-          EOF
-
-          cat > app/src/main/res/xml/backup_rules.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <full-backup-content>
-          </full-backup-content>
-          EOF
-
-          for dpi in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            mkdir -p app/src/main/res/mipmap-$dpi
-            convert -size 48x48 xc:#6200EE app/src/main/res/mipmap-$dpi/ic_launcher.png 2>/dev/null || \
-            python3 -c "
-          import struct, zlib
-          def png(w,h,color):
-              def chunk(t,d): c=zlib.crc32(t+d)&0xffffffff; return struct.pack('>I',len(d))+t+d+struct.pack('>I',c)
-              raw=b''.join(b'\x00'+bytes(color)*w for _ in range(h))
-              return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b'')
-          open('app/src/main/res/mipmap-$dpi/ic_launcher.png','wb').write(png(48,48,[98,0,238]))
-          "
-          done
-      - name: Build APK
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug > build.log 2>&1 || true
-
-      - name: Show error
-        run: |
-          echo "=== НАЧАЛО ЛОГА ==="
-          head -80 build.log
-          echo "=== СТРОКИ С ОШИБКОЙ ==="
-          grep -n "error:\|Error:\|Could not\|Unresolved\|Exception" build.log | head -20
-
       - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
