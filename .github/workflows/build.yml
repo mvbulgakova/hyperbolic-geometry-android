@@ -31,13 +31,18 @@ jobs:
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --quiet 2>&1
+          ./gradlew assembleDebug > build.log 2>&1 || true
 
-      - name: Find APK
-        run: find . -name "*.apk"
+      - name: Show error
+        run: |
+          echo "=== НАЧАЛО ЛОГА ==="
+          head -80 build.log
+          echo "=== СТРОКИ С ОШИБКОЙ ==="
+          grep -n "error:\|Error:\|Could not\|Unresolved\|Exception" build.log | head -20
 
-      - name: Upload APK
+      - name: Upload log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: build-log
+          path: build.log
