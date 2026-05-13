@@ -1,3 +1,4 @@
+```yaml
 name: Build APK
 on:
   push:
@@ -56,33 +57,69 @@ jobs:
           done
       - name: Patch source code
         run: |
-          BASE="app/src/main/java/com/hyperbolic/geometry"
-          sed -i "s/'%.2f'/\"%.2f\"/g" "$BASE/ui/screens/SphereScreen.kt"
-          sed -i 's/ACTION_POINTER_MOVE/ACTION_MOVE/g' "$BASE/rendering/GLSurfaceViewWrapper.kt"
-          sed -i '1s/^/import androidx.compose.foundation.verticalScroll\nimport androidx.compose.foundation.rememberScrollState\n/' "$BASE/ui/screens/BundleScreen.kt"
-          cat > "$BASE/rendering/GLStubs.kt" << 'EOF'
-          package com.hyperbolic.geometry.rendering
-          internal const val GL_AMBIENT_DIFFUSE = 0x1602
-          internal fun glBegin(mode: Int) {}
-          internal fun glEnd() {}
-          internal fun glVertex3f(x: Float, y: Float, z: Float) {}
-          EOF
-          THEME_FN=$(grep -oP 'fun \K\w+Theme' "$BASE/ui/theme/Theme.kt" | head -1)
-          [ -z "$THEME_FN" ] && THEME_FN="HyperbolicGeometryTheme"
-          cat > "$BASE/ui/theme/Theme.kt" << ENDOFFILE
-          package com.hyperbolic.geometry.ui.theme
-          import androidx.compose.material3.MaterialTheme
-          import androidx.compose.material3.darkColorScheme
-          import androidx.compose.material3.lightColorScheme
-          import androidx.compose.runtime.Composable
-          import androidx.compose.ui.graphics.Color
-          private val Dark = darkColorScheme(primary=Color(0xFF6650A4),secondary=Color(0xFF625B71),tertiary=Color(0xFF7D5260))
-          private val Light = lightColorScheme(primary=Color(0xFF6650A4),secondary=Color(0xFF625B71),tertiary=Color(0xFF7D5260))
-          @Composable
-          fun $THEME_FN(darkTheme: Boolean = false, content: @Composable () -> Unit) {
-              MaterialTheme(colorScheme = if (darkTheme) Dark else Light, content = content)
-          }
-          ENDOFFILE
+          python3 - << 'PYEOF'
+          import os, re
+          base = "app/src/main/java/com/hyperbolic/geometry"
+
+          with open(f"{base}/rendering/GLStubs.kt", "w") as f:
+              f.write("package com.hyperbolic.geometry.rendering\n"
+                      "internal const val GL_AMBIENT_DIFFUSE = 0x1602\n"
+                      "internal fun glBegin(mode: Int) {}\n"
+                      "internal fun glEnd() {}\n"
+                      "internal fun glVertex3f(x: Float, y: Float, z: Float) {}\n")
+
+          os.makedirs(f"{base}/ui/components", exist_ok=True)
+          with open(f"{base}/ui/components/SliderWithLabel.kt", "w") as f:
+              f.write("package com.hyperbolic.geometry.ui.components\n"
+                      "import androidx.compose.material3.Slider\n"
+                      "import androidx.compose.material3.Text\n"
+                      "import androidx.compose.runtime.Composable\n"
+                      "import androidx.compose.ui.Modifier\n"
+                      "@Composable\n"
+                      "fun SliderWithLabel(label: String, value: Float, onValueChange: (Float) -> Unit, valueRange: ClosedFloatingPointRange<Float> = 0f..1f, modifier: Modifier = Modifier) {\n"
+                      "    Text(label)\n"
+                      "    Slider(value = value, onValueChange = onValueChange, valueRange = valueRange, modifier = modifier)\n"
+                      "}\n")
+
+          with open(f"{base}/ui/screens/BundleScreen.kt", "r") as f:
+              content = f.read()
+          content = re.sub(
+              r"^(package [^\n]+\n)",
+              r"\1import androidx.compose.foundation.verticalScroll\nimport androidx.compose.foundation.rememberScrollState\nimport com.hyperbolic.geometry.ui.components.SliderWithLabel\n",
+              content, flags=re.MULTILINE)
+          with open(f"{base}/ui/screens/BundleScreen.kt", "w") as f:
+              f.write(content)
+
+          with open(f"{base}/ui/screens/SphereScreen.kt", "r") as f:
+              content = f.read()
+          content = content.replace("'%.2f'", '"%.2f"')
+          with open(f"{base}/ui/screens/SphereScreen.kt", "w") as f:
+              f.write(content)
+
+          with open(f"{base}/rendering/GLSurfaceViewWrapper.kt", "r") as f:
+              content = f.read()
+          content = content.replace("ACTION_POINTER_MOVE", "ACTION_MOVE")
+          with open(f"{base}/rendering/GLSurfaceViewWrapper.kt", "w") as f:
+              f.write(content)
+
+          with open(f"{base}/ui/theme/Theme.kt", "r") as f:
+              old = f.read()
+          m = re.search(r"fun (\w+Theme)", old)
+          theme_fn = m.group(1) if m else "HyperbolicGeometryTheme"
+          with open(f"{base}/ui/theme/Theme.kt", "w") as f:
+              f.write(f"package com.hyperbolic.geometry.ui.theme\n"
+                      f"import androidx.compose.material3.MaterialTheme\n"
+                      f"import androidx.compose.material3.darkColorScheme\n"
+                      f"import androidx.compose.material3.lightColorScheme\n"
+                      f"import androidx.compose.runtime.Composable\n"
+                      f"import androidx.compose.ui.graphics.Color\n"
+                      f"private val Dark = darkColorScheme(primary=Color(0xFF6650A4),secondary=Color(0xFF625B71),tertiary=Color(0xFF7D5260))\n"
+                      f"private val Light = lightColorScheme(primary=Color(0xFF6650A4),secondary=Color(0xFF625B71),tertiary=Color(0xFF7D5260))\n"
+                      f"@Composable\n"
+                      f"fun {theme_fn}(darkTheme: Boolean = false, content: @Composable () -> Unit) {{\n"
+                      f"    MaterialTheme(colorScheme = if (darkTheme) Dark else Light, content = content)\n"
+                      f"}}\n")
+          PYEOF
           sed -i '/kotlinOptions/a\            freeCompilerArgs += ["-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"]' app/build.gradle
       - name: Build APK
         run: |
@@ -104,3 +141,4 @@ jobs:
         with:
           name: build-log
           path: build.log
+```
